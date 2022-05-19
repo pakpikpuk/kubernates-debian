@@ -1,0 +1,82 @@
+##########################################
+# Debian 11.00 Kubernates Instalation
+# 2 Node Clusters
+# Master Node : 192.168.0.11
+# Slave Node  : 192.168.0.12
+##########################################
+
+##########################################
+# On Master Node
+##########################################
+# 1. Set Hostname
+hostnamectl set-hostname master-node #(on master node)
+hostnamectl set-hostname slave-node #(on slave node)
+
+# 2. Enable Control Group Kernel 
+sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1"/' /etc/default/grub
+update-grub
+
+# 3. Install Sudo and add the master and slave node IP into /etc/hosts
+apt-get install sudo
+sudo cat << EOF | sudo tee /etc/hosts
+192.168.0.11 master-node
+192.168.0.12 slave-node
+EOF
+
+# 4. Enable Sysctl module
+sudo cat << EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+
+cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+modprobe overlay
+modprobe br_netfilter
+sysctl --system
+
+# 5. Disable Swap
+sudo sed -i '/swap/d' /etc/fstab
+swapoff -a
+
+# 6. Install NTP & NFS and the other package required
+apt install -y chrony
+apt install nfs-common -y
+apt install -y curl gpg lsb-release apparmor apparmor-utils
+
+# 7. install docker
+curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list
+apt update -y
+apt-get install -y containerd.io
+mkdir -p /etc/containerd
+containerd config default | tee /etc/containerd/config.toml
+systemctl restart containerd
+
+# 8. install kubernates
+apt-get install -y apt-transport-https ca-certificates curl
+curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+apt-get update
+apt install -y iptables libiptc0/stable libxtables12/stable
+apt-get install -y kubelet=1.21.0-00 kubeadm=1.21.0-00 kubectl=1.21.0-00
+apt-mark hold kubelet kubeadm kubectl
+
+# 9. kubeadm init (master node only)
+kubeadm init --pod-network-cidr 172.20.0.0/16 --kubernetes-version 1.21.0
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl get nodes
+
+# 10. Setup networking with calico (master node only)
+
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+
+# 11. Then you can join any number of worker nodes by running the following on each as root: (slave node only)
+
+kubeadm join 192.168.0.11:6443 --token ilhhny.hq45jjz9f1bdh14a \
+        --discovery-token-ca-cert-hash sha256:8a53c33b2e94552895fef8b0814a260bc43b4bea99d1e8efb91deae6bed977d7

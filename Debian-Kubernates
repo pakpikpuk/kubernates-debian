@@ -78,5 +78,15 @@ kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 
 # 11. Then you can join any number of worker nodes by running the following on each as root: (slave node only)
 
-kubeadm join 192.168.0.11:6443 --token ilhhny.hq45jjz9f1bdh14a \
-        --discovery-token-ca-cert-hash sha256:8a53c33b2e94552895fef8b0814a260bc43b4bea99d1e8efb91deae6bed977d7
+ kubeadm join 192.168.0.11:6443 --token picvpr.4mt0tw63rzklwq6l \
+        --discovery-token-ca-cert-hash sha256:5463cf8f54cad2e1f2e6134ff2f0c9a1dd79d703270f9681f17fdf3703504811
+
+# <-- Some of kubernates basic command
+ # get kubernates node status
+        kubectl get nodes
+ # get worker join token 
+        kubeadm token create --print-join-command
+ # get pods status
+        kubectl get pods -A
+
+
